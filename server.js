@@ -1,173 +1,58 @@
-require('dotenv').config();
-const express = require('express');
-const axios = require('axios');
-const NodeCache = require('node-cache');
-const cors = require('cors');
+const express = require("express");
+const axios = require("axios");
+const cors = require("cors");
+require("dotenv").config();
 
 const app = express();
-app.use(cors()); // configure origins if you want to restrict
-app.use(express.json());
+app.use(cors());
+const PORT = process.env.PORT || 3000;
 
-const cacheTtl = parseInt(process.env.CACHE_TTL || '120', 10); // seconds
-const cache = new NodeCache({ stdTTL: cacheTtl, checkperiod: cacheTtl / 2 });
-
-// --- Twitch helper: get app access token ---
-let twitchAppToken = null;
-let twitchTokenExpiry = 0;
-
-async function getTwitchAppToken() {
-  const now = Date.now();
-  if (twitchAppToken && now < twitchTokenExpiry - 60000) { // reuse while still valid (with 60s buffer)
-    return twitchAppToken;
-  }
-  const clientId = process.env.TWITCH_CLIENT_ID;
-  const secret = process.env.TWITCH_CLIENT_SECRET;
-  if (!clientId || !secret) throw new Error('Twitch client id/secret not set in env');
-
-  const resp = await axios.post(`https://id.twitch.tv/oauth2/token`, null, {
-    params: {
-      client_id: clientId,
-      client_secret: secret,
-      grant_type: 'client_credentials'
-    }
-  });
-  twitchAppToken = resp.data.access_token;
-  // token validity in seconds
-  const expiresIn = resp.data.expires_in || 3600;
-  twitchTokenExpiry = Date.now() + expiresIn * 1000;
-  return twitchAppToken;
-}
-
-// --- /api/trending-games : Twitch Top Games ---
-app.get('/api/trending-games', async (req, res) => {
+// Twitch API
+app.get("/api/twitch", async (req, res) => {
   try {
-    const cached = cache.get('trending-games');
-    if (cached) return res.json({ source: 'cache', data: cached });
+    const tokenRes = await axios.post(
+      `https://id.twitch.tv/oauth2/token?client_id=${process.env.TWITCH_CLIENT_ID}&client_secret=${process.env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`
+    );
+    const token = tokenRes.data.access_token;
 
-    const token = await getTwitchAppToken();
-    const clientId = process.env.TWITCH_CLIENT_ID;
-
-    // Get top games (Twitch Helix API). We will request top 6 games then optionally get live viewer counts.
-    const topGamesResp = await axios.get('https://api.twitch.tv/helix/games/top', {
-      headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${token}` },
-      params: { first: 6 }
-    });
-
-    const games = topGamesResp.data.data || [];
-
-    // For each game we will fetch the top live stream count (optional). To keep requests small, we can skip this
-    // or do a single streams call for each game name (here we perform a single query to get top streams and group).
-    // Simpler approach: for each game id, fetch a top stream to get viewer_count (1 call per game).
-    const enhanced = await Promise.all(games.map(async (g) => {
-      // Try to fetch one stream for this game to get approximate viewer count
-      try {
-        const streamsResp = await axios.get('https://api.twitch.tv/helix/streams', {
-          headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${token}` },
-          params: { game_id: g.id, first: 1 }
-        });
-        const stream = (streamsResp.data.data && streamsResp.data.data[0]) || null;
-        return {
-          id: g.id,
-          name: g.name,
-          box_art_url: g.box_art_url.replace('{width}', '285').replace('{height}', '380'),
-          viewer_count: stream ? stream.viewer_count : null,
-          top_streamer: stream ? { user_name: stream.user_name, title: stream.title } : null
-        };
-      } catch (err) {
-        return {
-          id: g.id,
-          name: g.name,
-          box_art_url: g.box_art_url.replace('{width}', '285').replace('{height}', '380'),
-          viewer_count: null,
-          top_streamer: null
-        };
+    // Example: Top 5 games live streams
+    const topStreamsRes = await axios.get(
+      `https://api.twitch.tv/helix/streams?first=5`,
+      {
+        headers: {
+          "Client-ID": process.env.TWITCH_CLIENT_ID,
+          Authorization: `Bearer ${token}`
+        }
       }
+    );
+
+    const streams = topStreamsRes.data.data.map(stream => ({
+      id: stream.id,
+      name: stream.game_name,
+      viewers: stream.viewer_count,
+      box_art_url: stream.thumbnail_url
     }));
 
-    cache.set('trending-games', enhanced);
-    return res.json({ source: 'twitch', data: enhanced });
+    res.json({ data: streams });
   } catch (err) {
-    console.error('trending-games error', err.message || err);
-    res.status(500).json({ error: 'Failed to get trending games', details: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch Twitch data" });
   }
 });
 
-// --- /api/featured-video : YouTube -- get most recent video for a channel or search -->
-// You can either provide YOUTUBE_CHANNEL_ID or a search query (q param)
-app.get('/api/featured-video', async (req, res) => {
+// YouTube API
+app.get("/api/youtube", async (req, res) => {
   try {
-    const cached = cache.get('featured-video');
-    if (cached) return res.json({ source: 'cache', data: cached });
-
-    const key = process.env.YOUTUBE_API_KEY;
-    if (!key) throw new Error('YouTube API key not set in env');
-
-    const channelId = req.query.channelId; // optional
-    const q = req.query.q || 'esports highlights';
-
-    let video = null;
-
-    if (channelId) {
-      // fetch latest video from channel uploads (use search.list ordered by date)
-      const url = 'https://www.googleapis.com/youtube/v3/search';
-      const resp = await axios.get(url, {
-        params: {
-          key,
-          channelId,
-          part: 'snippet',
-          order: 'date',
-          type: 'video',
-          maxResults: 1
-        }
-      });
-      const item = resp.data.items && resp.data.items[0];
-      if (item) {
-        video = {
-          id: item.id.videoId,
-          title: item.snippet.title,
-          thumbnail: item.snippet.thumbnails.high.url,
-          publishedAt: item.snippet.publishedAt
-        };
-      }
-    } else {
-      // fallback: use search query to find most relevant recent video
-      const url = 'https://www.googleapis.com/youtube/v3/search';
-      const resp = await axios.get(url, {
-        params: {
-          key,
-          part: 'snippet',
-          q,
-          type: 'video',
-          order: 'relevance',
-          maxResults: 1
-        }
-      });
-      const item = resp.data.items && resp.data.items[0];
-      if (item) {
-        video = {
-          id: item.id.videoId,
-          title: item.snippet.title,
-          thumbnail: item.snippet.thumbnails.high.url,
-          publishedAt: item.snippet.publishedAt
-        };
-      }
-    }
-
-    if (!video) return res.status(404).json({ error: 'No video found' });
-
-    cache.set('featured-video', video);
-    return res.json({ source: 'youtube', data: video });
+    const ytRes = await axios.get(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&maxResults=5&regionCode=US&key=${process.env.YOUTUBE_API_KEY}`
+    );
+    res.json(ytRes.data);
   } catch (err) {
-    console.error('featured-video error', err.message || err);
-    res.status(500).json({ error: 'Failed to get featured video', details: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch YouTube data" });
   }
 });
 
-// --- health ---
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
-
-// --- start server ---
-const port = parseInt(process.env.PORT || '3000', 10);
-app.listen(port, () => {
-  console.log(`PulsePlay API running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Backend running on port ${PORT}`);
 });
