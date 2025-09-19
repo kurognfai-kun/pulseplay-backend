@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.get("/api/twitch", async (req, res) => {
   try {
     const tokenRes = await axios.post(
-      `https://id.twitch.tv/oauth2/token?client_id=${process.env.TWITCH_CLIENT_ID}&client_secret=${process.env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`
+      `https://id.twitch.tv/oauth2/token?client_id=${process.env.tv96fpr1ixm6kkadmiiyhx4qeotb0n}&client_secret=${process.env.qs3ajn4popylndr4y9i5qxuuu7t7vf}&grant_type=client_credentials`
     );
     const token = tokenRes.data.access_token;
 
@@ -44,7 +44,7 @@ app.get("/api/twitch", async (req, res) => {
 app.get("/api/youtube", async (req, res) => {
   try {
     const ytRes = await axios.get(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&maxResults=5&regionCode=US&key=${process.env.YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&maxResults=5&regionCode=US&key=${process.env.AIzaSyDziERAnN671J4CgytsqmQltSpx2dlwjW4}`
     );
     res.json(ytRes.data);
   } catch (err) {
