@@ -1,58 +1,53 @@
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
-require("dotenv").config();
+import express from "express";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
+
+dotenv.config(); // load .env file
 
 const app = express();
-app.use(cors());
-const PORT = process.env.PORT || 3000;
 
 // Twitch API
 app.get("/api/twitch", async (req, res) => {
   try {
-    const tokenRes = await axios.post(
-      `https://id.twitch.tv/oauth2/token?client_id=${process.env.tv96fpr1ixm6kkadmiiyhx4qeotb0n}&client_secret=${process.env.qs3ajn4popylndr4y9i5qxuuu7t7vf}&grant_type=client_credentials`
-    );
-    const token = tokenRes.data.access_token;
+    const authRes = await fetch("https://id.twitch.tv/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.TWITCH_CLIENT_ID,
+        client_secret: process.env.TWITCH_CLIENT_SECRET,
+        grant_type: "client_credentials",
+      }),
+    });
 
-    // Example: Top 5 games live streams
-    const topStreamsRes = await axios.get(
-      `https://api.twitch.tv/helix/streams?first=5`,
-      {
-        headers: {
-          "Client-ID": process.env.TWITCH_CLIENT_ID,
-          Authorization: `Bearer ${token}`
-        }
-      }
-    );
+    const { access_token } = await authRes.json();
 
-    const streams = topStreamsRes.data.data.map(stream => ({
-      id: stream.id,
-      name: stream.game_name,
-      viewers: stream.viewer_count,
-      box_art_url: stream.thumbnail_url
-    }));
+    const twitchRes = await fetch("https://api.twitch.tv/helix/games/top", {
+      headers: {
+        "Client-ID": process.env.TWITCH_CLIENT_ID,
+        Authorization: `Bearer ${access_token}`,
+      },
+    });
 
-    res.json({ data: streams });
+    const data = await twitchRes.json();
+    res.json(data);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch Twitch data" });
+    res.status(500).json({ error: "Twitch API failed" });
   }
 });
 
 // YouTube API
 app.get("/api/youtube", async (req, res) => {
   try {
-    const ytRes = await axios.get(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&maxResults=5&regionCode=US&key=${process.env.AIzaSyDziERAnN671J4CgytsqmQltSpx2dlwjW4}`
+    const ytRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&regionCode=US&videoCategoryId=20&key=${process.env.YOUTUBE_API_KEY}`
     );
-    res.json(ytRes.data);
+    const data = await ytRes.json();
+    res.json(data);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch YouTube data" });
+    res.status(500).json({ error: "YouTube API failed" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+app.listen(3000, () => console.log("Server running on port 3000"));
