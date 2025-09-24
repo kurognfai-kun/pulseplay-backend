@@ -1,91 +1,103 @@
-import 'dotenv/config';
-import express from 'express';
-import NodeCache from 'node-cache';
+// server.js
+import express from "express";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
 
+dotenv.config();
 const app = express();
-const cache = new NodeCache({ stdTTL: process.env.CACHE_TTL || 120 });
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+// ===== Twitch API Setup =====
+const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
+const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
+let twitchToken = null;
 
-// ===== Twitch API =====
-app.get('/api/twitch', async (req, res) => {
-  const cached = cache.get('twitch');
-  if (cached) return res.json(cached);
+// Get Twitch App Access Token
+async function getTwitchToken() {
+  if (twitchToken) return twitchToken; // simple cache
 
+  const res = await fetch(
+    `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
+    { method: "POST" }
+  );
+  const data = await res.json();
+  twitchToken = data.access_token;
+  return twitchToken;
+}
+
+// ===== Routes =====
+
+// Twitch live streams
+app.get("/api/twitch", async (req, res) => {
   try {
-    const tokenRes = await fetch(
-      `https://id.twitch.tv/oauth2/token?client_id=${process.env.TWITCH_CLIENT_ID}&client_secret=${process.env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
-      { method: 'POST' }
-    );
-    const tokenData = await tokenRes.json();
-    const accessToken = tokenData.access_token;
-
-    const response = await fetch('https://api.twitch.tv/helix/streams?first=6', {
-      headers: {
-        'Client-ID': process.env.TWITCH_CLIENT_ID,
-        'Authorization': `Bearer ${accessToken}`
+    const token = await getTwitchToken();
+    const response = await fetch(
+      "https://api.twitch.tv/helix/streams?first=6", // adjust number of streams
+      {
+        headers: {
+          "Client-ID": TWITCH_CLIENT_ID,
+          Authorization: `Bearer ${token}`,
+        },
       }
-    });
+    );
     const data = await response.json();
 
-    const streams = data.data.map(stream => ({
+    const streams = data.data.map((stream) => ({
       name: stream.user_name,
       game: stream.game_name,
-      thumbnail: stream.thumbnail_url.replace('{width}', '250').replace('{height}', '140'),
-      url: `https://www.twitch.tv/${stream.user_login}`
+      thumbnail: stream.thumbnail_url
+        .replace("{width}", "320")
+        .replace("{height}", "180"),
+      url: `https://twitch.tv/${stream.user_login}`,
     }));
 
-    cache.set('twitch', streams);
     res.json(streams);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Twitch API error' });
+    res.status(500).json({ error: "Failed to fetch Twitch streams" });
   }
 });
 
-// ===== YouTube API =====
-app.get('/api/youtube', async (req, res) => {
-  const cached = cache.get('youtube');
-  if (cached) return res.json(cached);
-
+// YouTube trending
+app.get("/api/youtube", async (req, res) => {
   try {
-    const CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw'; // replace with your channel
+    const YT_API_KEY = process.env.YOUTUBE_API_KEY;
     const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=6&order=viewCount&type=video&key=${process.env.YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&maxResults=6&regionCode=US&key=${YT_API_KEY}`
     );
     const data = await response.json();
 
-    const videos = data.items.map(video => ({
+    const videos = data.items.map((video) => ({
       title: video.snippet.title,
       thumbnail: video.snippet.thumbnails.medium.url,
-      url: `https://www.youtube.com/watch?v=${video.id.videoId}`
+      url: `https://www.youtube.com/watch?v=${video.id}`,
     }));
 
-    cache.set('youtube', videos);
     res.json(videos);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'YouTube API error' });
+    res.status(500).json({ error: "Failed to fetch YouTube videos" });
   }
 });
 
-// ===== Featured Clips (Optional) =====
-app.get('/api/featured', async (req, res) => {
-  const cached = cache.get('featured');
-  if (cached) return res.json(cached);
-
-  try {
-    // Placeholder: Replace with your featured clips logic
-    const clips = [
-      { embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ" }
-    ];
-    cache.set('featured', clips);
-    res.json(clips);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Featured clips error' });
-  }
+// Featured clips (custom placeholder)
+app.get("/api/featured", (req, res) => {
+  const clips = [
+    {
+      embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    },
+    {
+      embedUrl: "https://player.twitch.tv/?video=v123456789&parent=yourdomain.com",
+    },
+  ];
+  res.json(clips);
 });
 
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+// Root
+app.get("/", (req, res) => {
+  res.send("PulsePlay Backend API is running ⚡");
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+});
