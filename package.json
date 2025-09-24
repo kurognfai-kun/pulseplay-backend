@@ -1,57 +1,18 @@
-/**
- * Appends the next valid YouTube video card to the container.
- * @param {HTMLElement} container - The DOM element to append the card to
- * @param {Array} youtubeVideos - Array of video objects with title, thumbnail, url
- * @param {number} currentIndex - Current index in the array
- * @param {boolean} clearContainer - Whether to clear container before appending
- * @returns {number} - Next index to use for rotation
- */
-function appendNextValidVideo(container, youtubeVideos, currentIndex, clearContainer = true) {
-  if (!(container instanceof HTMLElement)) {
-    console.warn('Invalid container element');
-    return currentIndex;
-  }
-
-  if (!Array.isArray(youtubeVideos) || youtubeVideos.length === 0) {
-    console.warn('youtubeVideos array is empty or invalid');
-    return currentIndex;
-  }
-
-  const totalVideos = youtubeVideos.length;
-  let attempts = 0;
-
-  while (attempts < totalVideos) {
-    const index = currentIndex % totalVideos;
-    const video = youtubeVideos[index];
-
-    if (video && video.title && video.thumbnail && video.url) {
-      const nextCard = createCard({
-        title: video.title,
-        thumbnail: video.thumbnail,
-        url: video.url,
-        live: false
-      });
-
-      if (nextCard && nextCard.classList) {
-        nextCard.classList.add('youtube');
-        if (clearContainer) container.innerHTML = '';
-        container.appendChild(nextCard);
-        return index + 1; // next index
-      } else {
-        console.warn(`Invalid card element at index ${index}, skipping`);
-      }
-    } else {
-      console.warn(`Invalid video data at index ${index}, skipping`);
-    }
-
-    currentIndex++;
-    attempts++;
-  }
-
-  console.warn('No valid videos found to append');
-  return currentIndex;
+{
+  "name": "pulseplay-backend",
+  "version": "1.0.0",
+  "description": "Backend for PulsePlay site",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Timothy Mulhill",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-cache": "^5.1.2",
+    "node-fetch": "^3.4.1"
+  },
+  "type": "module"
 }
-
-// ===== Example Usage =====
-const container = document.getElementById('youtube-container');
-currentIndex = appendNextValidVideo(container, youtubeVideos, currentIndex);
