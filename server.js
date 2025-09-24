@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import NodeCache from 'node-cache';
-import fetch from 'node-fetch';
 
 const app = express();
 const cache = new NodeCache({ stdTTL: process.env.CACHE_TTL || 120 });
