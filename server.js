@@ -14,7 +14,7 @@ let twitchToken = null;
 
 // Get Twitch App Access Token
 async function getTwitchToken() {
-  if (twitchToken) return twitchToken; // simple cache
+  if (twitchToken) return twitchToken;
 
   const res = await fetch(
     `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
@@ -32,7 +32,7 @@ app.get("/api/twitch", async (req, res) => {
   try {
     const token = await getTwitchToken();
     const response = await fetch(
-      "https://api.twitch.tv/helix/streams?first=6", // adjust number of streams
+      "https://api.twitch.tv/helix/streams?first=6",
       {
         headers: {
           "Client-ID": TWITCH_CLIENT_ID,
@@ -45,9 +45,7 @@ app.get("/api/twitch", async (req, res) => {
     const streams = data.data.map((stream) => ({
       name: stream.user_name,
       game: stream.game_name,
-      thumbnail: stream.thumbnail_url
-        .replace("{width}", "320")
-        .replace("{height}", "180"),
+      thumbnail: stream.thumbnail_url.replace("{width}", "320").replace("{height}", "180"),
       url: `https://twitch.tv/${stream.user_login}`,
     }));
 
@@ -80,15 +78,11 @@ app.get("/api/youtube", async (req, res) => {
   }
 });
 
-// Featured clips (custom placeholder)
+// Featured clips
 app.get("/api/featured", (req, res) => {
   const clips = [
-    {
-      embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
-    },
-    {
-      embedUrl: "https://player.twitch.tv/?video=v123456789&parent=yourdomain.com",
-    },
+    { embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ" },
+    { embedUrl: "https://player.twitch.tv/?video=v123456789&parent=yourdomain.com" },
   ];
   res.json(clips);
 });
